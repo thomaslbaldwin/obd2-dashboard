@@ -6,7 +6,8 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 const { VehicleStore, ValidationError } = require('./store');
 const { VehicleSession } = require('./session');
-const { PIDS } = require('./obd');
+const { PIDS, parseVoltage } = require('./obd');
+const { Elm327 } = require('./elm327');
 
 const ROOT = path.join(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -68,6 +69,21 @@ function createApp({ dataFile = path.join(ROOT, 'data', 'vehicles.json'), sessio
     ['GET', /^\/api\/vehicles$/, () => vehicleList()],
     ['GET', /^\/api\/pids$/, () =>
       Object.entries(PIDS).map(([pid, d]) => ({ pid, key: d.key, name: d.name, unit: d.unit, min: d.min, max: d.max }))],
+    // Check that an adapter answers at host:port, without saving anything.
+    ['POST', /^\/api\/test-connection$/, async (_, body) => {
+      const host = String(body.host || '').trim();
+      const port = Number(body.port);
+      if (!/^[A-Za-z0-9.\-:]+$/.test(host)) throw httpError(400, 'A valid adapter host/IP is required');
+      if (!Number.isInteger(port) || port < 1 || port > 65535) throw httpError(400, 'Port must be 1–65535');
+      // Most adapters accept one client at a time, so don't open a second socket to one in use.
+      for (const [id, s] of sessions) {
+        const v = store.get(id);
+        if (v && v.host === host && v.port === port && s.state !== 'disconnected' && s.state !== 'error') {
+          return { ok: true, inUse: true, vehicle: v.name, state: s.state };
+        }
+      }
+      return testAdapter(host, port);
+    }],
     ['POST', /^\/api\/vehicles$/, (_, body) => {
       const v = store.create(body);
       broadcast({ type: 'vehicles', vehicles: vehicleList() });
@@ -120,6 +136,27 @@ function createApp({ dataFile = path.join(ROOT, 'data', 'vehicles.json'), sessio
       return { response };
     }],
   ];
+
+  async function testAdapter(host, port) {
+    const elm = new Elm327({ host, port, connectTimeout: 5000 });
+    elm.on('error', () => {}); // a late socket error must not crash the server
+    const started = Date.now();
+    try {
+      await elm.connect();
+      const reset = await elm.send('ATZ', { timeout: 4000 });
+      const adapter = reset.split(/[\r\n]+/).map((l) => l.trim()).filter(Boolean).pop() || null;
+      if (!adapter || !/ELM|OBD|STN|v\d/i.test(adapter)) {
+        return { ok: false, error: 'Something answered, but it does not look like an ELM327 adapter' };
+      }
+      let voltage = null;
+      try { voltage = parseVoltage(await elm.send('ATRV', { timeout: 3000 })); } catch (_) { /* optional */ }
+      return { ok: true, adapter, voltage, ms: Date.now() - started };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    } finally {
+      elm.destroy();
+    }
+  }
 
   function requireVehicle(id) {
     const v = store.get(id);

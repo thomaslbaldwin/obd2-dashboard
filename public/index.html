@@ -161,13 +161,21 @@
       <h2 id="vehicle-dialog-title">Add vehicle</h2>
       <div class="form-grid">
         <label class="span2">Name<input name="name" required maxlength="60" placeholder="e.g. My Civic" /></label>
-        <label>Make<input name="make" maxlength="40" /></label>
-        <label>Model<input name="model" maxlength="40" /></label>
-        <label>Year<input name="year" type="number" min="1980" max="2100" /></label>
-        <label>Color<input name="color" type="color" value="#2a78d6" /></label>
-        <label class="span2">Redline <span class="muted">(optional — rpm where the red zone starts; 6,500 if left blank)</span><input name="redline" type="number" min="1500" max="12000" step="100" placeholder="6500" inputmode="numeric" /></label>
         <label>Adapter IP / host<input name="host" required value="192.168.0.10" /></label>
-        <label>Port<input name="port" type="number" min="1" max="65535" value="35000" required /></label>
+        <label>Port<input name="port" type="number" min="1" max="65535" value="35000" required inputmode="numeric" /></label>
+        <div class="span2 test-row">
+          <button type="button" class="btn" id="vehicle-test">Test connection</button>
+          <span class="test-result" id="vehicle-test-result" role="status"></span>
+        </div>
+        <label>Make<input name="make" maxlength="40" placeholder="Optional" /></label>
+        <label>Model<input name="model" maxlength="40" placeholder="Optional" /></label>
+        <label>Year<input name="year" type="number" min="1980" max="2100" inputmode="numeric" placeholder="Optional" /></label>
+        <label>Color<input name="color" type="color" value="#2a78d6" /></label>
+      </div>
+      <details class="advanced" id="vehicle-advanced">
+        <summary>Advanced</summary>
+        <div class="form-grid">
+        <label class="span2">Redline <span class="muted">(rpm where the red zone starts; 6,500 if left blank)</span><input name="redline" type="number" min="1500" max="12000" step="100" placeholder="6500" inputmode="numeric" /></label>
         <label class="span2">Protocol
           <select name="protocol">
             <option value="0">Automatic (recommended)</option>
@@ -182,9 +190,10 @@
             <option value="5">ISO 14230-4 KWP (fast init)</option>
           </select>
         </label>
-        <label class="span2">VIN <span class="muted">(optional — read automatically on first connect)</span><input name="vin" maxlength="17" /></label>
+        <label class="span2">VIN <span class="muted">(read automatically on first connect)</span><input name="vin" maxlength="17" /></label>
         <label class="span2">Notes<textarea name="notes" rows="2" maxlength="500"></textarea></label>
-      </div>
+        </div>
+      </details>
       <p class="form-error" id="vehicle-form-error"></p>
       <div class="dialog-actions">
         <button type="button" class="btn danger ghost" id="vehicle-delete" hidden>Delete vehicle</button>

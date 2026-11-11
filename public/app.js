@@ -1,4 +1,5 @@
 import { Gauge } from './gauge.js';
+import { decodeVin } from './vin.js';
 import { TimeChart } from './chart.js';
 import { describeDtc, dtcSystem, dtcGuidance, SEVERITY_LABEL } from './dtc-codes.js';
 
@@ -85,7 +86,7 @@ let lastHeaderRender = 0;
 const $ = (id) => document.getElementById(id);
 
 function loadPrefs() {
-  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false, driveSlots: DEFAULT_DRIVE_SLOTS, console: false };
+  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false, driveSlots: DEFAULT_DRIVE_SLOTS, console: false, vinOfferDismissed: {} };
   try {
     Object.assign(p, JSON.parse(localStorage.getItem('obd-prefs') || '{}'));
   } catch (_) { /* storage unavailable */ }
@@ -425,20 +426,42 @@ function renderVehicleHeader() {
   ];
   $('v-info').innerHTML = items.map(([k, val, mono]) => `<span><b>${k}</b><span class="${mono ? 'mono' : ''}">${esc(val)}</span></span>`).join('');
 
-  const banner = $('v-banner');
   const warn = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 1 21h22zm0 6 1 7h-2zm0 9.5a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"/></svg>';
+  const offer = vinOffer(v, info);
   if ((st === 'error' || st === 'reconnecting') && s.status.error) {
-    banner.className = 'banner error';
-    banner.innerHTML = `${warn}<div><strong>Can't reach the vehicle.</strong> ${esc(s.status.error)}<br><span class="muted">Check your computer is joined to the adapter's WiFi network, the IP/port are right, and the ignition is on.</span></div>`;
-    banner.hidden = false;
+    setBanner('error', `${warn}<div><strong>Can't reach the vehicle.</strong> ${esc(s.status.error)}<br><span class="muted">Check your computer is joined to the adapter's WiFi network, the IP/port are right, and the ignition is on.</span></div>`);
   } else if (info.vinMismatch) {
     const other = state.vehicles.find((x) => x.id === info.vinMismatch.matchesVehicleId);
-    banner.className = 'banner warn';
-    banner.innerHTML = `${warn}<div><strong>Different vehicle detected.</strong> This adapter is plugged into VIN <code>${esc(info.vinMismatch.actual)}</code>, but this profile expects <code>${esc(info.vinMismatch.expected)}</code>.${other ? ` That VIN belongs to <a href="#/vehicle/${esc(other.id)}">${esc(other.name)}</a>.` : ''}</div>`;
-    banner.hidden = false;
+    setBanner('warn', `${warn}<div><strong>Different vehicle detected.</strong> This adapter is plugged into VIN <code>${esc(info.vinMismatch.actual)}</code>, but this profile expects <code>${esc(info.vinMismatch.expected)}</code>.${other ? ` That VIN belongs to <a href="#/vehicle/${esc(other.id)}">${esc(other.name)}</a>.` : ''}</div>`);
+  } else if (offer) {
+    const what = [offer.year, offer.make].filter(Boolean).join(' ');
+    const fields = [offer.year && 'year', offer.make && 'make'].filter(Boolean).join(' and ');
+    setBanner('info', `<div><strong>The VIN says this is a ${esc(what)}.</strong> Add the ${fields} to this profile? <span class="muted">The model can't be read from a VIN offline; add it under Edit.</span></div>
+      <div class="banner-actions"><button class="btn primary" data-vin-fill>Fill in</button><button class="btn" data-vin-dismiss>Not now</button></div>`);
   } else {
-    banner.hidden = true;
+    setBanner(null);
   }
+}
+
+// Only touches the DOM when the banner changes, so its buttons survive the 1 s header refresh.
+function setBanner(kind, html = '') {
+  const banner = $('v-banner');
+  const sig = `${kind}|${html}`;
+  if (banner.dataset.sig === sig) return;
+  banner.dataset.sig = sig;
+  banner.className = `banner ${kind || ''}`;
+  banner.innerHTML = html;
+  banner.hidden = !kind;
+}
+
+// Year/make decoded from the VIN that the profile doesn't have yet, or null if nothing to offer.
+function vinOffer(v, info) {
+  const vin = info.vin || v.vin;
+  if (!vin || prefs.vinOfferDismissed?.[v.id] === vin) return null;
+  const d = decodeVin(vin);
+  if (!d) return null;
+  const offer = { vin, year: !v.year && d.year ? d.year : null, make: !v.make && d.make ? d.make : null };
+  return offer.year || offer.make ? offer : null;
 }
 
 // Tachometer scale for a vehicle: red zone from its redline, top of scale a little above it.
@@ -911,6 +934,7 @@ function openVehicleDialog(vehicle) {
   $('vehicle-dialog-title').textContent = vehicle ? 'Edit vehicle' : 'Add vehicle';
   $('vehicle-delete').hidden = !vehicle;
   $('vehicle-form-error').textContent = '';
+  setTestResult('', null);
   if (vehicle) {
     for (const el of form.elements) {
       if (el.name && vehicle[el.name] != null) el.value = vehicle[el.name];
@@ -920,6 +944,8 @@ function openVehicleDialog(vehicle) {
     const palette = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
     form.elements.color.value = palette[state.vehicles.length % palette.length];
   }
+  // Advanced stays closed unless the profile already uses something in it.
+  $('vehicle-advanced').open = !!vehicle && (!!vehicle.notes || !!vehicle.redline || String(vehicle.protocol ?? '0') !== '0');
   $('vehicle-dialog').showModal();
   form.elements.name.focus();
 }
@@ -940,6 +966,37 @@ async function saveVehicle(e) {
     toast(editingId ? 'Vehicle updated' : 'Vehicle added');
   } catch (err) {
     $('vehicle-form-error').textContent = err.message;
+    if (/VIN|Redline|Protocol/i.test(err.message)) $('vehicle-advanced').open = true; // show the field at fault
+  }
+}
+
+function setTestResult(text, result) {
+  const el = $('vehicle-test-result');
+  el.textContent = text;
+  if (result) el.dataset.result = result; else delete el.dataset.result;
+}
+
+async function testConnection() {
+  const form = $('vehicle-form');
+  const host = form.elements.host.value.trim();
+  const port = Number(form.elements.port.value);
+  const btn = $('vehicle-test');
+  btn.disabled = true;
+  setTestResult(`Trying ${host}:${port}…`, null);
+  try {
+    const r = await api('POST', '/api/test-connection', { host, port });
+    if (r.inUse) {
+      setTestResult(`Already in use by ${r.vehicle} (${STATE_LABEL[r.state] || r.state}).`, 'ok');
+    } else if (r.ok) {
+      const volts = r.voltage != null ? `, battery ${r.voltage.toFixed(1)} V` : '';
+      setTestResult(`Adapter found: ${r.adapter}${volts}.`, 'ok');
+    } else {
+      setTestResult(`No adapter found: ${r.error}. Check you are on the adapter's WiFi and the ignition is on.`, 'fail');
+    }
+  } catch (err) {
+    setTestResult(err.message, 'fail');
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1083,6 +1140,26 @@ function init() {
   };
 
   $('vehicle-form').onsubmit = saveVehicle;
+  $('vehicle-test').onclick = testConnection;
+  $('v-banner').onclick = async (e) => {
+    const v = currentVehicle();
+    if (!v) return;
+    const offer = vinOffer(v, snap(v.id).status?.info || {});
+    if (!offer) return;
+    if (e.target.closest('[data-vin-dismiss]')) {
+      prefs.vinOfferDismissed = { ...prefs.vinOfferDismissed, [v.id]: offer.vin };
+      savePrefs();
+      renderVehicleHeader();
+    } else if (e.target.closest('[data-vin-fill]')) {
+      const patch = {};
+      if (offer.year) patch.year = offer.year;
+      if (offer.make) patch.make = offer.make;
+      try {
+        await api('PUT', `/api/vehicles/${v.id}`, patch);
+        toast('Profile updated from the VIN');
+      } catch (err) { toast(err.message, true); }
+    }
+  };
   $('vehicle-cancel').onclick = () => $('vehicle-dialog').close();
   $('vehicle-delete').onclick = async () => {
     const v = state.vehicles.find((x) => x.id === editingId);

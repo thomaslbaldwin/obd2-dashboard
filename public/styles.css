@@ -344,6 +344,18 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
 .form-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); font-weight: 500; }
 .form-grid .span2 { grid-column: span 2; }
+.test-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.test-result { font-size: 13px; color: var(--text-2); flex: 1 1 200px; }
+.test-result[data-result="ok"] { color: var(--good-text); }
+.test-result[data-result="fail"] { color: var(--critical-text); }
+.advanced { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.advanced summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-2); min-height: 32px; display: flex; align-items: center; gap: 6px; }
+.advanced summary::before { content: "▸"; }
+.advanced[open] summary::before { content: "▾"; }
+.advanced summary::-webkit-details-marker { display: none; }
+.advanced .form-grid { margin-top: 8px; }
+.banner.info { border-color: color-mix(in srgb, var(--accent) 55%, transparent); align-items: center; flex-wrap: wrap; }
+.banner .banner-actions { display: flex; gap: 8px; margin-left: auto; }
 .form-error { color: var(--critical-text); min-height: 1.2em; margin: 12px 0 0; }
 .dialog-actions { display: flex; gap: 8px; margin-top: 8px; }
 .spacer { flex: 1; }

@@ -8,7 +8,7 @@ You can save **any number of vehicles** and connect to several at once.
 
 - **Direct adapter connection.** Talks to the scanner over its raw TCP socket using the ELM327 command set. No phone app or cloud service sits in between.
 - **Multi-vehicle.** Every vehicle is a saved profile (name, make/model/year, colour, redline, adapter IP/port, protocol). You can connect to several adapters at the same time, and the *All vehicles* page shows them side by side.
-- **Automatic vehicle identification.** On first connect the VIN is read and saved to the profile. If you later plug the same adapter into a different car, the dashboard warns you and points to the matching profile.
+- **Automatic vehicle identification.** On first connect the VIN is read and saved to the profile. If you later plug the same adapter into a different car, the dashboard warns you and points to the matching profile. If the profile has no year or make, the dashboard offers to fill them in from the VIN (decoded offline; the model can't be read this way).
 - **Live data.** Polls only the PIDs your car says it supports. Fast values (RPM, speed, throttle, load, MAF, MAP) are read every cycle. Temperatures, fuel level and fuel trims are read less often. A typical CAN car gives about 25–30 readings per second.
   - Gauges: RPM and speed. The RPM red zone and scale follow each vehicle's redline, set in its profile (6,500 rpm if left blank).
   - Tiles: coolant, oil and intake temps; throttle; load; battery and ECU voltage; fuel level; MAF; MAP; timing; short- and long-term fuel trims; fuel rate; run time; distances. Six key readings show by default and the rest sit behind *Show all readings*, grouped into Engine, Fuel & air, Electrical and Trip. Out-of-range values get a warning or critical flag and move to the front.
@@ -40,7 +40,7 @@ Open http://localhost:3000 and click **Connect** on the demo vehicles.
    ```bash
    npm start
    ```
-4. Open http://localhost:3000, click **Add vehicle**, and enter the adapter address. Most WiFi ELM327 dongles use **`192.168.0.10` port `35000`**. Some use `192.168.0.123:35000` or `192.168.1.10:23`; check the adapter's manual.
+4. Open http://localhost:3000, click **Add vehicle**, and enter the adapter address. **Test connection** checks that an adapter answers there before you save. Most WiFi ELM327 dongles use **`192.168.0.10` port `35000`**. Some use `192.168.0.123:35000` or `192.168.1.10:23`; check the adapter's manual.
 5. Click **Connect**.
 
 To view the dashboard from another device on the same network (for example a phone mounted on the dash while the laptop runs the server), start it with `HOST=0.0.0.0 npm start` and browse to `http://<laptop-ip>:3000`.
