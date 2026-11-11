@@ -1,0 +1,5 @@
+node_modules/
+data/vehicles.json
+logs/
+*.log
+.DS_Store

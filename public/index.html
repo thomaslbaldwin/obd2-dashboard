@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OBD2 Live Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='none' stroke='%232a78d6' stroke-width='4'/><path d='M16 16 L24 9' stroke='%232a78d6' stroke-width='4' stroke-linecap='round'/></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="3"/><path d="M16 16 L23 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        <span>OBD2 Live</span>
+      </div>
+
+      <button class="nav-item" id="nav-fleet" data-view="fleet">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7v6H4zM13 5h7v6h-7zM4 13h7v6H4zM13 13h7v6h-7z" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+        All vehicles
+      </button>
+
+      <div class="sidebar-section">
+        <div class="sidebar-heading">
+          <span>Vehicles</span>
+          <button class="icon-btn" id="add-vehicle" title="Add vehicle" aria-label="Add vehicle">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <ul class="vehicle-list" id="vehicle-list"></ul>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="seg" role="group" aria-label="Units">
+          <button data-units="metric">Metric</button>
+          <button data-units="imperial">Imperial</button>
+        </div>
+        <button class="icon-btn" id="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">
+          <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
+        </button>
+        <span class="ws-state" id="ws-state" title="Server connection"></span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <button class="menu-btn" id="menu-btn" aria-label="Open menu">
+        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+
+      <!-- Fleet overview -->
+      <section id="view-fleet" class="view">
+        <header class="page-head">
+          <div>
+            <h1>All vehicles</h1>
+            <p class="muted">Every saved vehicle and its adapter. Connect as many as you can reach at once.</p>
+          </div>
+          <button class="btn primary" id="add-vehicle-2">Add vehicle</button>
+        </header>
+        <div class="fleet-grid" id="fleet-grid"></div>
+        <div class="empty" id="fleet-empty" hidden>
+          <h2>No vehicles yet</h2>
+          <p>Add a vehicle and point it at your WiFi OBD2 adapter (usually <code>192.168.0.10</code> port <code>35000</code>).</p>
+          <button class="btn primary" id="add-vehicle-3">Add your first vehicle</button>
+        </div>
+      </section>
+
+      <!-- Single vehicle dashboard -->
+      <section id="view-vehicle" class="view" hidden>
+        <header class="page-head">
+          <div class="vehicle-title">
+            <span class="swatch" id="v-swatch"></span>
+            <div>
+              <h1 id="v-name"></h1>
+              <p class="muted" id="v-sub"></p>
+            </div>
+          </div>
+          <div class="head-actions">
+            <span class="status-pill" id="v-status"></span>
+            <button class="btn" id="v-edit">Edit</button>
+            <a class="btn" id="v-export" download>Export CSV</a>
+            <button class="btn primary" id="v-connect">Connect</button>
+          </div>
+        </header>
+
+        <div class="banner warn" id="v-banner" hidden></div>
+
+        <div class="info-strip" id="v-info"></div>
+
+        <div class="gauges">
+          <div class="card gauge-card" id="g-rpm"></div>
+          <div class="card gauge-card" id="g-speed"></div>
+        </div>
+
+        <div class="tiles" id="v-tiles"></div>
+
+        <div class="card chart-card">
+          <div class="card-head">
+            <h2>Live trends</h2>
+            <div class="chart-controls">
+              <div class="seg" role="group" aria-label="Time range" id="range-seg">
+                <button data-range="60">1 min</button>
+                <button data-range="300">5 min</button>
+                <button data-range="600">10 min</button>
+              </div>
+            </div>
+          </div>
+          <div class="chips" id="metric-chips"></div>
+          <div class="charts" id="charts"></div>
+        </div>
+
+        <div class="split">
+          <div class="card" id="dtc-card">
+            <div class="card-head">
+              <h2>Diagnostics</h2>
+              <div>
+                <button class="btn" id="dtc-read">Read codes</button>
+                <button class="btn danger" id="dtc-clear">Clear codes</button>
+              </div>
+            </div>
+            <div id="dtc-body"></div>
+          </div>
+
+          <div class="card" id="term-card">
+            <div class="card-head">
+              <h2>Adapter console</h2>
+              <label class="check"><input type="checkbox" id="term-follow" checked /> Follow</label>
+            </div>
+            <div class="terminal" id="terminal" aria-live="off"></div>
+            <form class="term-input" id="term-form">
+              <input id="term-cmd" placeholder="Send command, e.g. ATRV or 010C" autocomplete="off" spellcheck="false" />
+              <button class="btn">Send</button>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="vehicle-dialog">
+    <form method="dialog" id="vehicle-form">
+      <h2 id="vehicle-dialog-title">Add vehicle</h2>
+      <div class="form-grid">
+        <label class="span2">Name<input name="name" required maxlength="60" placeholder="e.g. My Civic" /></label>
+        <label>Make<input name="make" maxlength="40" /></label>
+        <label>Model<input name="model" maxlength="40" /></label>
+        <label>Year<input name="year" type="number" min="1980" max="2100" /></label>
+        <label>Color<input name="color" type="color" value="#2a78d6" /></label>
+        <label>Adapter IP / host<input name="host" required value="192.168.0.10" /></label>
+        <label>Port<input name="port" type="number" min="1" max="65535" value="35000" required /></label>
+        <label class="span2">Protocol
+          <select name="protocol">
+            <option value="0">Automatic (recommended)</option>
+            <option value="6">ISO 15765-4 CAN 11-bit 500k (most 2008+)</option>
+            <option value="7">ISO 15765-4 CAN 29-bit 500k</option>
+            <option value="8">ISO 15765-4 CAN 11-bit 250k</option>
+            <option value="9">ISO 15765-4 CAN 29-bit 250k</option>
+            <option value="1">SAE J1850 PWM (older Ford)</option>
+            <option value="2">SAE J1850 VPW (older GM)</option>
+            <option value="3">ISO 9141-2</option>
+            <option value="4">ISO 14230-4 KWP (slow init)</option>
+            <option value="5">ISO 14230-4 KWP (fast init)</option>
+          </select>
+        </label>
+        <label class="span2">VIN <span class="muted">(optional — read automatically on first connect)</span><input name="vin" maxlength="17" /></label>
+        <label class="span2">Notes<textarea name="notes" rows="2" maxlength="500"></textarea></label>
+      </div>
+      <p class="form-error" id="vehicle-form-error"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn danger ghost" id="vehicle-delete" hidden>Delete vehicle</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" value="cancel" id="vehicle-cancel">Cancel</button>
+        <button type="submit" class="btn primary" value="save">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
