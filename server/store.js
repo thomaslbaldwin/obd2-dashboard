@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const FIELDS = ['name', 'make', 'model', 'year', 'host', 'port', 'protocol', 'vin', 'color', 'notes'];
+const FIELDS = ['name', 'make', 'model', 'year', 'host', 'port', 'protocol', 'vin', 'color', 'notes', 'redline'];
 
 /**
  * Persists vehicle profiles to a JSON file. Each profile describes one car and
@@ -106,6 +106,11 @@ function validate(input, requireAll) {
     const y = Number(out.year);
     if (!Number.isInteger(y) || y < 1980 || y > 2100) throw new ValidationError('Year looks invalid');
     out.year = y;
+  }
+  if (out.redline != null) {
+    const r = Number(out.redline);
+    if (!Number.isInteger(r) || r < 1500 || r > 12000) throw new ValidationError('Redline must be 1,500–12,000 rpm');
+    out.redline = r;
   }
   if (out.vin != null) {
     out.vin = String(out.vin).toUpperCase();

@@ -7,10 +7,10 @@ You can save **any number of vehicles** and connect to several at once.
 ## Features
 
 - **Direct adapter connection.** Talks to the scanner over its raw TCP socket using the ELM327 command set. No phone app or cloud service sits in between.
-- **Multi-vehicle.** Every vehicle is a saved profile (name, make/model/year, colour, adapter IP/port, protocol). You can connect to several adapters at the same time, and the *All vehicles* page shows them side by side.
+- **Multi-vehicle.** Every vehicle is a saved profile (name, make/model/year, colour, redline, adapter IP/port, protocol). You can connect to several adapters at the same time, and the *All vehicles* page shows them side by side.
 - **Automatic vehicle identification.** On first connect the VIN is read and saved to the profile. If you later plug the same adapter into a different car, the dashboard warns you and points to the matching profile.
 - **Live data.** Polls only the PIDs your car says it supports. Fast values (RPM, speed, throttle, load, MAF, MAP) are read every cycle. Temperatures, fuel level and fuel trims are read less often. A typical CAN car gives about 25–30 readings per second.
-  - Gauges: RPM (with a red zone) and speed
+  - Gauges: RPM and speed. The RPM red zone and scale follow each vehicle's redline, set in its profile (6,500 rpm if left blank).
   - Tiles: coolant, oil and intake temps; throttle; load; battery and ECU voltage; fuel level; MAF; MAP; timing; short- and long-term fuel trims; fuel rate; run time; distances. Six key readings show by default and the rest sit behind *Show all readings*, grouped into Engine, Fuel & air, Electrical and Trip. Out-of-range values get a warning or critical flag and move to the front.
   - Alert strip: the check-engine light, trouble codes and any out-of-range reading are listed directly under the vehicle header.
   - Drive mode: a full-screen view for a phone or tablet mounted in the car, with speed in very large type, an RPM bar and four readings you choose. It keeps the screen awake where the browser allows it (HTTPS or `localhost` only).
@@ -18,7 +18,7 @@ You can save **any number of vehicles** and connect to several at once.
   - Trend charts: pick any metrics and view the last 1, 5 or 10 minutes, with a hover crosshair
 - **Diagnostics.** Shows the check-engine light, stored, pending and permanent DTCs with descriptions, and lets you clear codes after a confirmation.
 - **Adapter console.** Shows the live TX/RX traffic and lets you send raw commands (`ATRV`, `010C`, …), which helps with troubleshooting.
-- **Other options:** CSV export of recent data, imperial (default) or metric units, dark/light theme, and a responsive layout for a tablet or phone mounted in the car.
+- **Other options:** CSV export of recent data, imperial (default) or metric units, dark/light theme, and a responsive layout for a tablet or phone mounted in the car, with controls at least 44px tall on touch screens.
 - **Built-in simulator.** Emulates WiFi adapters on running cars, so you can try everything without a vehicle.
 
 ## Quick start

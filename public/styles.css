@@ -187,8 +187,6 @@ code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-3)
 .gauge .tick { stroke: var(--axis); }
 .gauge .tick.major { stroke: var(--muted); }
 .gauge .tick-label { fill: var(--muted); font: 500 11px var(--font); }
-.gauge .needle { stroke: var(--text); stroke-width: 3; stroke-linecap: round; transition: transform 0.25s linear; }
-.gauge .hub { fill: var(--text); }
 .gauge .value { fill: var(--text); font: 700 44px var(--font); letter-spacing: -0.02em; }
 .gauge .unit { fill: var(--muted); font: 500 13px var(--font); }
 .gauge .label { fill: var(--text-2); font: 600 12px var(--font); text-transform: uppercase; letter-spacing: 0.08em; }
@@ -406,6 +404,25 @@ body.driving { overflow: hidden; }
 .slot-options .btn[aria-current="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 
 .details-toggle { display: none; align-self: flex-start; }
+
+/* ---------- Touch screens: 44px minimum targets ---------- */
+@media (pointer: coarse) {
+  .btn { height: 44px; padding: 0 16px; font-size: 14px; }
+  .icon-btn, .main .menu-btn { width: 44px; height: 44px; }
+  .nav-item, .vehicle-list li button { min-height: 48px; }
+  .seg button { min-height: 44px; padding: 0 14px; font-size: 13px; }
+  .chip { min-height: 44px; padding: 0 14px; font-size: 13px; }
+  .chips { gap: 8px; }
+  .alert { min-height: 44px; }
+  .check { min-height: 44px; font-size: 13px; }
+  .check input { width: 20px; height: 20px; }
+  input, select, textarea { min-height: 44px; font-size: 16px; } /* 16px stops iOS zooming on focus */
+  .check input, input[type="color"] { min-height: 0; }
+  input[type="color"] { height: 44px; }
+  .slot-options .btn { height: 48px; }
+  .status-pill { height: 32px; }
+  .fleet-card footer .btn { min-width: 110px; }
+}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {

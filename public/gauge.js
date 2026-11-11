@@ -1,4 +1,4 @@
-// Radial SVG gauge with a 240° sweep, value arc, needle and optional red zone.
+// Radial SVG gauge with a 240° sweep, value arc, centred readout and optional red zone.
 const NS = 'http://www.w3.org/2000/svg';
 const SWEEP = 240;
 const START = -120; // degrees from 12 o'clock
@@ -74,12 +74,10 @@ export class Gauge {
       }
     }
 
-    this.needle = el('line', { x1: cx, y1: cy, x2: cx, y2: cy - r + 30, class: 'needle', style: `transform-origin:${cx}px ${cy}px; transform: rotate(${START}deg)` }, svg);
-    el('circle', { cx, cy, r: 6, class: 'hub' }, svg);
-
-    this.valueText = el('text', { x: cx, y: cy + 62, 'text-anchor': 'middle', class: 'value' }, svg);
+    // The arc shows position and the number shows the value; a needle would repeat both.
+    this.valueText = el('text', { x: cx, y: cy + 18, 'text-anchor': 'middle', class: 'value' }, svg);
     this.valueText.textContent = '—';
-    const u = el('text', { x: cx, y: cy + 82, 'text-anchor': 'middle', class: 'unit' }, svg);
+    const u = el('text', { x: cx, y: cy + 42, 'text-anchor': 'middle', class: 'unit' }, svg);
     u.textContent = unit;
     const l = el('text', { x: cx, y: cy + 104, 'text-anchor': 'middle', class: 'label' }, svg);
     l.textContent = label;
@@ -90,11 +88,10 @@ export class Gauge {
   set(value) {
     this.value = value;
     if (value == null || Number.isNaN(value)) {
-      // No reading: park the needle so an old value can't be mistaken for a live one.
+      // No reading: empty the arc so an old value can't be mistaken for a live one.
       this.svg.classList.add('stale');
       this.valueText.textContent = '—';
       this.fill.setAttribute('stroke-dashoffset', this.fullLen);
-      this.needle.style.transform = `rotate(${this.angle(this.opts.min)}deg)`;
       this.svg.setAttribute('aria-label', `${this.opts.label}: no reading`);
       return;
     }
@@ -102,7 +99,6 @@ export class Gauge {
     const frac = Math.min(1, Math.max(0, (value - min) / (max - min)));
     this.svg.classList.remove('stale');
     this.fill.setAttribute('stroke-dashoffset', this.fullLen * (1 - frac));
-    this.needle.style.transform = `rotate(${this.angle(value)}deg)`;
     this.valueText.textContent = format(value);
     this.svg.setAttribute('aria-label', `${this.opts.label}: ${format(value)} ${this.opts.unit}`);
   }

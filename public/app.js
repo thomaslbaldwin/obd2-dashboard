@@ -52,8 +52,7 @@ const TILE_GROUPS = [
   ['Electrical', ['batteryVoltage', 'moduleVoltage']],
   ['Trip', ['runTime', 'distanceSinceClear', 'distanceWithMil']],
 ];
-const RPM_MAX = 8000;
-const RPM_RED_FROM = 6500;
+const DEFAULT_REDLINE = 6500;
 const DEFAULT_DRIVE_SLOTS = ['coolantTemp', 'fuelLevel', 'batteryVoltage', 'engineLoad'];
 const STALE_AFTER_MS = 5000; // connected but no sample for this long: treat readings as stale
 const BLANK_AFTER_MS = 60000; // stale for this long: stop showing the old values at all
@@ -205,7 +204,7 @@ function handleMessage(msg) {
       if (state.view === 'vehicle' && !state.vehicles.some((v) => v.id === state.vehicleId)) location.hash = '#/';
       renderSidebar();
       if (state.view === 'fleet') renderFleet();
-      else renderVehicleHeader();
+      else { renderVehicleHeader(); syncGauges(); }
       break;
     case 'status': {
       const s = snap(msg.vehicleId);
@@ -436,9 +435,26 @@ function renderVehicleHeader() {
   }
 }
 
+// Tachometer scale for a vehicle: red zone from its redline, top of scale a little above it.
+function rpmScale(v) {
+  const redline = v?.redline || DEFAULT_REDLINE;
+  return { redline, max: Math.ceil((redline * 1.15) / 1000) * 1000 };
+}
+
+let gaugeSig = '';
+function gaugeSignature() {
+  return `${prefs.units}|${rpmScale(currentVehicle()).redline}`;
+}
+// Rebuild the gauges if the units or the vehicle's redline changed (e.g. after an edit).
+function syncGauges() {
+  if (gaugeSig !== gaugeSignature()) { buildGauges(); queueRender(); }
+}
+
 function buildGauges() {
   const imperial = prefs.units === 'imperial';
-  const rpmOpts = { label: 'Engine speed', unit: 'rpm', min: 0, max: RPM_MAX, majorStep: 1000, minorStep: 250, redFrom: RPM_RED_FROM,
+  const scale = rpmScale(currentVehicle());
+  gaugeSig = gaugeSignature();
+  const rpmOpts = { label: 'Engine speed', unit: 'rpm', min: 0, max: scale.max, majorStep: 1000, minorStep: 250, redFrom: scale.redline,
     tickFormat: (v) => String(v / 1000), format: (v) => Math.round(v).toLocaleString() };
   const speedOpts = imperial
     ? { label: 'Speed', unit: 'mph', min: 0, max: 160, majorStep: 20, minorStep: 5 }
@@ -598,7 +614,6 @@ function buildDriveSlots() {
       <span class="l"><span>${esc(METRICS[k].label)}</span><em></em></span>
       <span class="v">—</span>
     </button>`).join('');
-  $('d-rpm-bar').style.setProperty('--red-zone', `${((RPM_MAX - RPM_RED_FROM) / RPM_MAX) * 100}%`);
 }
 
 function renderDrive(s, flagged, live, blank) {
@@ -618,7 +633,9 @@ function renderDrive(s, flagged, live, blank) {
   $('d-speed-unit').textContent = unitOf('speed');
   const rpm = blank ? null : L.rpm;
   $('d-rpm').textContent = fmt('rpm', rpm);
-  $('d-rpm-fill').style.width = `${rpm == null ? 0 : Math.max(0, Math.min(100, (rpm / RPM_MAX) * 100))}%`;
+  const scale = rpmScale(v);
+  $('d-rpm-bar').style.setProperty('--red-zone', `${((scale.max - scale.redline) / scale.max) * 100}%`);
+  $('d-rpm-fill').style.width = `${rpm == null ? 0 : Math.max(0, Math.min(100, (rpm / scale.max) * 100))}%`;
 
   for (const slot of $('d-slots').children) {
     const k = slot.dataset.k;
@@ -842,6 +859,8 @@ async function saveVehicle(e) {
   const data = Object.fromEntries(new FormData(form).entries());
   data.port = Number(data.port);
   if (!data.year) delete data.year;
+  if (data.redline) data.redline = Number(data.redline);
+  else if (!editingId) delete data.redline; // when editing, a blank field clears it back to the default
   if (!editingId) for (const k of ['vin', 'notes', 'make', 'model']) if (!data[k]) delete data[k];
   try {
     const v = editingId ? await api('PUT', `/api/vehicles/${editingId}`, data) : await api('POST', '/api/vehicles', data);

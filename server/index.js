@@ -267,7 +267,7 @@ if (require.main === module) {
       if (!app.store.list().some((v) => v.port === port && v.host === '127.0.0.1')) {
         app.store.create(
           { name: `${profile.name} (demo)`, make: profile.make, model: profile.model, year: profile.year,
-            host: '127.0.0.1', port, color: profile.color },
+            host: '127.0.0.1', port, color: profile.color, redline: profile.redline },
           { ephemeral: true }
         );
       }
