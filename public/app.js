@@ -86,7 +86,7 @@ let lastHeaderRender = 0;
 const $ = (id) => document.getElementById(id);
 
 function loadPrefs() {
-  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false, driveSlots: DEFAULT_DRIVE_SLOTS, console: false, vinOfferDismissed: {} };
+  const p = { units: 'imperial', theme: 'system', range: 60, charts: DEFAULT_CHARTS, allTiles: false, driveSlots: DEFAULT_DRIVE_SLOTS, console: false, vinOfferDismissed: {} };
   try {
     Object.assign(p, JSON.parse(localStorage.getItem('obd-prefs') || '{}'));
   } catch (_) { /* storage unavailable */ }
@@ -170,10 +170,10 @@ let ws;
 let wsDelay = 500;
 function connectSocket() {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-  ws.onopen = () => { wsDelay = 500; $('ws-state').classList.add('ok'); $('ws-state').title = 'Connected to server'; };
+  ws.onopen = () => { wsDelay = 500; $('ws-state').classList.add('ok'); $('ws-label').textContent = 'Server connected'; };
   ws.onclose = () => {
     $('ws-state').classList.remove('ok');
-    $('ws-state').title = 'Server connection lost — retrying';
+    $('ws-label').textContent = 'Server offline, retrying…';
     setTimeout(connectSocket, wsDelay);
     wsDelay = Math.min(wsDelay * 2, 8000);
   };
@@ -364,6 +364,11 @@ function renderFleetLive() {
         : `<span class="mil-badge off">${MIL_ICON} No faults</span>`;
     }
     card.querySelector('[data-role="foot"]').innerHTML = [milHtml, esc(parts.join(' · '))].filter(Boolean).join(' &nbsp; ');
+    // Vehicles needing attention first, then live ones, then the rest. CSS order keeps the DOM
+    // (and any click in progress) untouched.
+    const fault = !!mil || (dt ? dt.stored.length + dt.pending.length > 0 : false)
+      || (live && Object.keys(METRICS).some((k) => METRICS[k].level && s.latest[k] != null && METRICS[k].level(s.latest[k])));
+    card.style.order = fault ? 0 : live ? 1 : ACTIVE_STATES.includes(st) ? 2 : 3;
     const btn = card.querySelector('[data-role="toggle"]');
     btn.textContent = ACTIVE_STATES.includes(st) ? 'Disconnect' : 'Connect';
   }
@@ -1003,8 +1008,16 @@ async function testConnection() {
 // -----------------------------------------------------------------------------
 // Wiring
 // -----------------------------------------------------------------------------
+const THEMES = ['system', 'light', 'dark'];
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+
 function applyTheme() {
-  document.documentElement.dataset.theme = prefs.theme;
+  if (!THEMES.includes(prefs.theme)) prefs.theme = 'system';
+  const resolved = prefs.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : prefs.theme;
+  document.documentElement.dataset.theme = resolved;
+  const name = { system: 'System', light: 'Light', dark: 'Dark' }[prefs.theme];
+  $('theme-label').textContent = name; // short: it shares a row with the units toggle
+  $('theme-toggle').setAttribute('aria-label', `Theme: ${name}. Change theme`);
   for (const c of charts.values()) c.draw();
 }
 
@@ -1037,8 +1050,9 @@ function init() {
     renderSidebar();
     if (state.view === 'vehicle') { buildGauges(); buildCharts(); renderLive(); } else renderFleetLive();
   }));
+  systemDark.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
   $('theme-toggle').onclick = () => {
-    prefs.theme = prefs.theme === 'dark' ? 'light' : 'dark';
+    prefs.theme = THEMES[(THEMES.indexOf(prefs.theme) + 1) % THEMES.length];
     savePrefs();
     applyTheme();
   };

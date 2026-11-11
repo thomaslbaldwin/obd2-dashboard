@@ -35,10 +35,11 @@
           <button data-units="metric">Metric</button>
           <button data-units="imperial">Imperial</button>
         </div>
-        <button class="icon-btn" id="theme-toggle" title="Toggle light/dark" aria-label="Toggle theme">
-          <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
+        <button class="btn theme-btn" id="theme-toggle" title="Change theme">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
+          <span id="theme-label"></span>
         </button>
-        <span class="ws-state" id="ws-state" title="Server connection"></span>
+        <span class="ws-state" id="ws-state" role="status"><i aria-hidden="true"></i><span id="ws-label">Connecting to server…</span></span>
       </div>
     </aside>
 
