@@ -75,7 +75,7 @@ let lastHeaderRender = 0;
 const $ = (id) => document.getElementById(id);
 
 function loadPrefs() {
-  const p = { units: 'metric', theme: 'dark', range: 60, charts: DEFAULT_CHARTS };
+  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS };
   try {
     Object.assign(p, JSON.parse(localStorage.getItem('obd-prefs') || '{}'));
   } catch (_) { /* storage unavailable */ }
