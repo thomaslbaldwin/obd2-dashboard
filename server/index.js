@@ -200,7 +200,7 @@ function createApp({ dataFile = path.join(ROOT, 'data', 'vehicles.json'), sessio
     ws.on('error', () => clients.delete(ws));
     const snapshots = {};
     for (const [id, s] of sessions) snapshots[id] = s.snapshot();
-    ws.send(JSON.stringify({ type: 'hello', vehicles: vehicleList(), snapshots }));
+    ws.send(JSON.stringify({ type: 'hello', serverTime: Date.now(), vehicles: vehicleList(), snapshots }));
   });
 
   async function shutdown() {

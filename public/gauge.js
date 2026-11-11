@@ -90,8 +90,12 @@ export class Gauge {
   set(value) {
     this.value = value;
     if (value == null || Number.isNaN(value)) {
+      // No reading: park the needle so an old value can't be mistaken for a live one.
       this.svg.classList.add('stale');
       this.valueText.textContent = '—';
+      this.fill.setAttribute('stroke-dashoffset', this.fullLen);
+      this.needle.style.transform = `rotate(${this.angle(this.opts.min)}deg)`;
+      this.svg.setAttribute('aria-label', `${this.opts.label}: no reading`);
       return;
     }
     const { min, max, format } = this.opts;

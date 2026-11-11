@@ -44,16 +44,21 @@ const METRICS = {
   distanceSinceClear: { label: 'Since codes cleared', kind: 'distance', dp: 0, noChart: true },
   distanceWithMil: { label: 'Driven with MIL on', kind: 'distance', dp: 0, noChart: true },
 };
-const TILE_ORDER = [
-  'coolantTemp', 'oilTemp', 'throttle', 'engineLoad', 'batteryVoltage', 'fuelLevel', 'intakeTemp',
-  'maf', 'map', 'timingAdvance', 'stftB1', 'ltftB1', 'fuelRate', 'moduleVoltage', 'ambientTemp',
-  'baroPressure', 'fuelPressure', 'runTime', 'distanceSinceClear', 'distanceWithMil',
+// Shown by default; everything else sits behind "Show all readings" unless it is out of range.
+const KEY_TILES = ['coolantTemp', 'oilTemp', 'throttle', 'engineLoad', 'batteryVoltage', 'fuelLevel'];
+const TILE_GROUPS = [
+  ['Engine', ['coolantTemp', 'oilTemp', 'engineLoad', 'throttle', 'timingAdvance']],
+  ['Fuel & air', ['fuelLevel', 'fuelRate', 'fuelPressure', 'stftB1', 'ltftB1', 'maf', 'map', 'intakeTemp', 'ambientTemp', 'baroPressure']],
+  ['Electrical', ['batteryVoltage', 'moduleVoltage']],
+  ['Trip', ['runTime', 'distanceSinceClear', 'distanceWithMil']],
 ];
+const STALE_AFTER_MS = 5000; // connected but no sample for this long: treat readings as stale
+const BLANK_AFTER_MS = 60000; // stale for this long: stop showing the old values at all
 const DEFAULT_CHARTS = ['rpm', 'speed', 'coolantTemp', 'throttle'];
 const ACTIVE_STATES = ['connecting', 'initializing', 'connected', 'reconnecting'];
 const STATE_LABEL = {
   disconnected: 'Disconnected', connecting: 'Connecting…', initializing: 'Initializing…',
-  connected: 'Live', reconnecting: 'Reconnecting…', error: 'Error',
+  connected: 'Live', reconnecting: 'Reconnecting…', error: 'Error', stalled: 'No data',
 };
 
 // -----------------------------------------------------------------------------
@@ -67,6 +72,8 @@ const state = {
   vehicleId: null,
 };
 let gauges = null;
+let tiles = new Map(); // metric key -> { el, group grid, order within the group }
+let lastAlertSig = null;
 let charts = new Map();
 let renderQueued = false;
 let editingId = null;
@@ -75,7 +82,7 @@ let lastHeaderRender = 0;
 const $ = (id) => document.getElementById(id);
 
 function loadPrefs() {
-  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS };
+  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false };
   try {
     Object.assign(p, JSON.parse(localStorage.getItem('obd-prefs') || '{}'));
   } catch (_) { /* storage unavailable */ }
@@ -88,6 +95,32 @@ function savePrefs() {
 function snap(id) {
   if (!state.snaps[id]) state.snaps[id] = { status: { state: 'disconnected' }, latest: {}, history: [], dtcs: null, traffic: [] };
   return state.snaps[id];
+}
+
+// Freshness. `lastDataAt` is on the browser's clock.
+function dataAge(s) {
+  return s.lastDataAt ? Date.now() - s.lastDataAt : null;
+}
+function isStale(s) {
+  if (s.status?.state !== 'connected') return true;
+  const age = dataAge(s);
+  return age != null && age > STALE_AFTER_MS;
+}
+function isBlank(s) {
+  if (!isStale(s)) return false;
+  const age = dataAge(s);
+  return age == null || age > BLANK_AFTER_MS;
+}
+// Connection state as shown to the user: "connected" with no samples arriving is "stalled".
+function displayState(s) {
+  const st = s.status?.state || 'disconnected';
+  return st === 'connected' && isStale(s) ? 'stalled' : st;
+}
+function formatAge(ms) {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)} min`;
+  return `${Math.floor(sec / 3600)} h`;
 }
 
 // -----------------------------------------------------------------------------
@@ -145,15 +178,23 @@ function connectSocket() {
 
 function handleMessage(msg) {
   switch (msg.type) {
-    case 'hello':
+    case 'hello': {
       state.vehicles = msg.vehicles;
       state.snaps = {};
+      // Sample timestamps are on the server's clock; shift them onto ours.
+      const clockOffset = msg.serverTime ? Date.now() - msg.serverTime : 0;
       for (const v of msg.vehicles) snap(v.id).status = v.status;
       for (const [id, s] of Object.entries(msg.snapshots)) {
-        Object.assign(snap(id), { status: s, latest: s.latest || {}, history: s.history || [], dtcs: s.dtcs, traffic: s.traffic || [] });
+        const history = s.history || [];
+        const last = history[history.length - 1];
+        Object.assign(snap(id), {
+          status: s, latest: s.latest || {}, history, dtcs: s.dtcs, traffic: s.traffic || [],
+          lastDataAt: last ? last.t + clockOffset : null,
+        });
       }
       route();
       break;
+    }
     case 'vehicles':
       state.vehicles = msg.vehicles;
       for (const v of msg.vehicles) if (!state.snaps[v.id]) snap(v.id).status = v.status;
@@ -176,6 +217,7 @@ function handleMessage(msg) {
     case 'data': {
       const s = snap(msg.vehicleId);
       s.stale = false;
+      s.lastDataAt = Date.now();
       Object.assign(s.latest, msg.values);
       s.history.push({ t: msg.t, values: msg.values });
       if (s.history.length > 8000) s.history.splice(0, s.history.length - 8000);
@@ -189,7 +231,7 @@ function handleMessage(msg) {
     }
     case 'dtcs':
       snap(msg.vehicleId).dtcs = msg.dtcs;
-      if (state.view === 'vehicle' && msg.vehicleId === state.vehicleId) renderDtcs();
+      if (state.view === 'vehicle' && msg.vehicleId === state.vehicleId) { renderDtcs(); queueRender(); }
       if (state.view === 'fleet') queueRender();
       break;
     case 'traffic': {
@@ -241,14 +283,19 @@ function route() {
 // -----------------------------------------------------------------------------
 function renderSidebar() {
   $('nav-fleet').classList.toggle('active', state.view === 'fleet');
-  $('vehicle-list').innerHTML = state.vehicles.map((v) => {
-    const st = snap(v.id).status?.state || 'disconnected';
+  const html = state.vehicles.map((v) => {
+    const st = displayState(snap(v.id));
     return `<li><button data-id="${esc(v.id)}" class="${v.id === state.vehicleId ? 'active' : ''}">
       <span class="v-color" style="background:${esc(v.color || '#2a78d6')}"></span>
       <span class="v-label">${esc(v.name)}<small>${esc(STATE_LABEL[st] || st)}</small></span>
       <span class="dot" data-state="${esc(st)}" aria-hidden="true"></span>
     </button></li>`;
   }).join('');
+  // Called every second to pick up stalled connections; only touch the DOM on a real change.
+  if (html !== renderSidebar.last) {
+    renderSidebar.last = html;
+    $('vehicle-list').innerHTML = html;
+  }
   document.querySelectorAll('[data-units]').forEach((b) => b.classList.toggle('active', b.dataset.units === prefs.units));
 }
 
@@ -286,10 +333,10 @@ function renderFleetLive() {
     const id = card.dataset.id;
     const s = snap(id);
     const st = s.status?.state || 'disconnected';
-    const live = st === 'connected';
+    const live = !isStale(s);
     const pill = card.querySelector('[data-role="status"]');
-    pill.dataset.state = st;
-    pill.textContent = STATE_LABEL[st] || st;
+    pill.dataset.state = displayState(s);
+    pill.textContent = STATE_LABEL[displayState(s)] || st;
     for (const b of card.querySelectorAll('[data-k]')) {
       const k = b.dataset.k;
       const v = live ? s.latest[k] : null;
@@ -320,6 +367,7 @@ function currentVehicle() {
 }
 
 function openVehicle() {
+  lastAlertSig = null;
   buildGauges();
   renderVehicleHeader();
   buildTiles();
@@ -339,8 +387,11 @@ function renderVehicleHeader() {
   $('v-sub').textContent = [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Vehicle';
   $('v-swatch').style.background = v.color || '#2a78d6';
   const pill = $('v-status');
-  pill.dataset.state = st;
-  pill.textContent = STATE_LABEL[st] || st;
+  pill.dataset.state = displayState(s);
+  pill.textContent = STATE_LABEL[displayState(s)] || st;
+  const age = dataAge(s);
+  $('v-age').hidden = !(isStale(s) && age != null);
+  if (age != null) $('v-age').textContent = `Last reading ${formatAge(age)} ago`;
   $('v-connect').textContent = ACTIVE_STATES.includes(st) ? 'Disconnect' : 'Connect';
   $('v-connect').classList.toggle('primary', !ACTIVE_STATES.includes(st));
   const connected = st === 'connected';
@@ -355,7 +406,7 @@ function renderVehicleHeader() {
     ['Protocol', info.protocol || '—'],
     ['Interface', info.adapter || '—'],
     ['PIDs', s.status?.activePids?.length ? `${s.status.activePids.length} polled` : '—'],
-    ['Rate', connected && s.status?.rate ? `${s.status.rate} readings/s` : '—'],
+    ['Rate', !isStale(s) && s.status?.rate ? `${s.status.rate} readings/s` : '—'],
   ];
   $('v-info').innerHTML = items.map(([k, val, mono]) => `<span><b>${k}</b><span class="${mono ? 'mono' : ''}">${esc(val)}</span></span>`).join('');
 
@@ -386,44 +437,93 @@ function buildGauges() {
 }
 
 function buildTiles() {
-  $('v-tiles').innerHTML = TILE_ORDER.map((k) => `
-    <div class="tile" data-k="${k}" hidden>
-      <div class="tile-label"><span>${esc(METRICS[k].label)}</span><span class="flag"></span></div>
-      <div class="tile-value"></div>
-      ${METRICS[k].range ? '<div class="bar"><i></i></div>' : ''}
-    </div>`).join('');
+  tiles = new Map();
+  $('v-tiles-key').innerHTML = '';
+  const groups = $('v-tiles-groups');
+  groups.innerHTML = '';
+  for (const [title, keys] of TILE_GROUPS) {
+    const section = document.createElement('div');
+    section.className = 'tile-group';
+    section.innerHTML = `<h3>${esc(title)}</h3><div class="tiles"></div>`;
+    const grid = section.lastChild;
+    keys.forEach((k, order) => {
+      const el = document.createElement('div');
+      el.className = 'tile';
+      el.dataset.k = k;
+      el.hidden = true;
+      el.innerHTML = `
+        <div class="tile-label"><span>${esc(METRICS[k].label)}</span><span class="flag"></span></div>
+        <div class="tile-value"></div>
+        ${METRICS[k].range ? '<div class="bar"><i></i></div>' : ''}`;
+      grid.appendChild(el);
+      tiles.set(k, { el, grid, order });
+    });
+    groups.appendChild(section);
+  }
 }
 
 function renderLive() {
   if (state.view !== 'vehicle') return;
   const s = snap(state.vehicleId);
-  const live = s.status?.state === 'connected';
+  const live = !isStale(s);
+  const blank = isBlank(s);
   const L = s.latest;
-  if (live) {
+  if (blank) {
+    gauges.rpm.set(null);
+    gauges.speed.set(null);
+  } else {
     gauges.rpm.set(L.rpm);
     gauges.speed.set(L.speed != null ? convert('speed', L.speed) : null);
-  } else {
-    gauges.rpm.markStale();
-    gauges.speed.markStale();
+    if (!live) {
+      gauges.rpm.markStale();
+      gauges.speed.markStale();
+    }
   }
-  for (const tile of $('v-tiles').children) {
-    const k = tile.dataset.k;
+
+  const expanded = !!prefs.allTiles;
+  const keyGrid = $('v-tiles-key');
+  const flagged = [];
+  let shown = 0;
+  let extra = 0;
+  for (const [k, t] of tiles) {
+    const tile = t.el;
     const v = L[k];
     if (v == null) { tile.hidden = true; continue; }
     tile.hidden = false;
+    shown++;
     tile.classList.toggle('stale', !live);
     const m = METRICS[k];
     const unit = unitOf(k);
-    tile.querySelector('.tile-value').innerHTML = `${esc(fmt(k, v))}${unit ? `<small>${esc(unit)}</small>` : ''}`;
-    const level = m.level ? m.level(v) : null;
-    if (level) tile.dataset.level = level; else delete tile.dataset.level;
+    tile.querySelector('.tile-value').innerHTML = blank ? '—' : `${esc(fmt(k, v))}${unit ? `<small>${esc(unit)}</small>` : ''}`;
+    const level = !blank && m.level ? m.level(v) : null;
+    if (level) { tile.dataset.level = level; flagged.push([k, level]); } else delete tile.dataset.level;
     tile.querySelector('.flag').textContent = level === 'critical' ? '▲ Critical' : level === 'warning' ? '▲ Check' : '';
     const bar = tile.querySelector('.bar > i');
     if (bar) {
       const [lo, hi] = m.range;
-      bar.style.width = `${Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100))}%`;
+      bar.style.width = blank ? '0%' : `${Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100))}%`;
     }
+    // Key tiles and anything out of range stay visible; out-of-range tiles sort to the front.
+    const keyIdx = KEY_TILES.indexOf(k);
+    const primary = keyIdx >= 0 || !!level;
+    if (!primary) extra++;
+    const home = expanded || !primary ? t.grid : keyGrid;
+    if (tile.parentNode !== home) home.appendChild(tile);
+    const base = home === keyGrid ? (keyIdx >= 0 ? keyIdx : 50 + t.order) : t.order;
+    tile.style.order = base - (level === 'critical' ? 200 : level === 'warning' ? 100 : 0);
   }
+  keyGrid.hidden = expanded;
+  $('v-tiles-groups').hidden = !expanded;
+  for (const section of $('v-tiles-groups').children) {
+    section.hidden = !section.querySelector('.tile:not([hidden])');
+  }
+  $('v-tiles-empty').hidden = shown > 0;
+  const toggle = $('tiles-toggle');
+  toggle.hidden = shown === 0 || (!expanded && extra === 0);
+  toggle.textContent = expanded ? 'Show key readings only' : `Show all ${shown} readings`;
+  toggle.setAttribute('aria-expanded', String(expanded));
+
+  renderAlerts(s, flagged, blank);
   renderChips();
   for (const chart of charts.values()) chart.draw();
   // Header bits that change with data (sample rate, PID count) — refresh ~1/s.
@@ -432,6 +532,43 @@ function renderLive() {
     lastHeaderRender = now;
     renderVehicleHeader();
   }
+}
+
+// ----- Alert strip ----------------------------------------------------------
+const WARN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 1 21h22zm0 6 1 7h-2zm0 9.5a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"/></svg>';
+
+// Faults that need attention, shown directly under the header. Live values are left out on
+// purpose so the strip only re-renders when the set of problems changes.
+function renderAlerts(s, flagged, blank) {
+  const d = s.dtcs;
+  const L = s.latest;
+  const items = [];
+  const mil = d?.milOn ?? (!blank && L.milOn != null ? !!L.milOn : null);
+  const stored = d?.stored ?? [];
+  const pending = d?.pending ?? [];
+  const storedCount = d ? stored.length : (!blank && L.dtcCount) || 0;
+  if (mil || storedCount || pending.length) {
+    const counts = [];
+    if (storedCount) counts.push(`${storedCount} stored`);
+    if (pending.length) counts.push(`${pending.length} pending`);
+    const codes = [...stored, ...pending].slice(0, 4).map((c) => `<code>${esc(c)}</code>`).join(' ');
+    items.push(`<button class="alert" data-goto="dtc-card">${MIL_ICON}
+      <strong>${mil ? 'Check engine light on' : 'Trouble codes present'}</strong>
+      ${counts.length ? `<span>${counts.join(' · ')}</span>` : ''} ${codes}
+      <span class="alert-link">View codes</span></button>`);
+  }
+  const rank = { critical: 0, warning: 1 };
+  for (const [k, level] of [...flagged].sort((a, b) => rank[a[1]] - rank[b[1]])) {
+    items.push(`<button class="alert" data-level="${level}" data-tile="${k}">${WARN_ICON}
+      <strong>${esc(METRICS[k].label)}</strong>
+      <span>${level === 'critical' ? 'critical' : 'outside normal range'}</span></button>`);
+  }
+  const sig = items.join('');
+  if (sig === lastAlertSig) return;
+  lastAlertSig = sig;
+  const box = $('v-alerts');
+  box.innerHTML = sig;
+  box.hidden = items.length === 0;
 }
 
 // ----- Charts ---------------------------------------------------------------
@@ -623,6 +760,23 @@ function init() {
     applyTheme();
   };
 
+  $('tiles-toggle').onclick = () => {
+    prefs.allTiles = !prefs.allTiles;
+    savePrefs();
+    renderLive();
+  };
+  $('v-alerts').onclick = (e) => {
+    const b = e.target.closest('.alert');
+    if (!b) return;
+    const target = b.dataset.tile ? tiles.get(b.dataset.tile)?.el : $(b.dataset.goto);
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: b.dataset.tile ? 'center' : 'start' });
+    if (b.dataset.tile) {
+      target.classList.add('flash');
+      setTimeout(() => target.classList.remove('flash'), 1500);
+    }
+  };
+
   $('v-connect').onclick = () => toggleConnection(state.vehicleId);
   $('v-edit').onclick = () => openVehicleDialog(currentVehicle());
 
@@ -685,7 +839,12 @@ function init() {
   };
 
   // Keep charts scrolling smoothly even between samples.
-  setInterval(() => { if (state.view === 'vehicle') for (const c of charts.values()) c.draw(); }, 1000);
+  // The same tick ages the "last reading" label and blanks values that have gone stale.
+  setInterval(() => {
+    if (state.view === 'vehicle') for (const c of charts.values()) c.draw();
+    renderSidebar();
+    queueRender();
+  }, 1000);
 
   connectSocket();
 }

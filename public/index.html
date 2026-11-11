@@ -75,6 +75,7 @@
             </div>
           </div>
           <div class="head-actions">
+            <span class="age" id="v-age" hidden></span>
             <span class="status-pill" id="v-status"></span>
             <button class="btn" id="v-edit">Edit</button>
             <a class="btn" id="v-export" download>Export CSV</a>
@@ -84,6 +85,8 @@
 
         <div class="banner warn" id="v-banner" hidden></div>
 
+        <div class="alerts" id="v-alerts" hidden></div>
+
         <div class="info-strip" id="v-info"></div>
 
         <div class="gauges">
@@ -91,7 +94,15 @@
           <div class="card gauge-card" id="g-speed"></div>
         </div>
 
-        <div class="tiles" id="v-tiles"></div>
+        <section class="readings" id="v-readings">
+          <div class="section-head">
+            <h2>Readings</h2>
+            <button class="btn" id="tiles-toggle" aria-controls="v-tiles-groups" hidden></button>
+          </div>
+          <div class="tiles" id="v-tiles-key"></div>
+          <div class="tile-groups" id="v-tiles-groups" hidden></div>
+          <p class="none" id="v-tiles-empty">Connect to the vehicle to see live readings.</p>
+        </section>
 
         <div class="card chart-card">
           <div class="card-head">
