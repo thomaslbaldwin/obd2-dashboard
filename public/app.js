@@ -52,6 +52,9 @@ const TILE_GROUPS = [
   ['Electrical', ['batteryVoltage', 'moduleVoltage']],
   ['Trip', ['runTime', 'distanceSinceClear', 'distanceWithMil']],
 ];
+const RPM_MAX = 8000;
+const RPM_RED_FROM = 6500;
+const DEFAULT_DRIVE_SLOTS = ['coolantTemp', 'fuelLevel', 'batteryVoltage', 'engineLoad'];
 const STALE_AFTER_MS = 5000; // connected but no sample for this long: treat readings as stale
 const BLANK_AFTER_MS = 60000; // stale for this long: stop showing the old values at all
 const DEFAULT_CHARTS = ['rpm', 'speed', 'coolantTemp', 'throttle'];
@@ -70,6 +73,7 @@ const state = {
   snaps: {}, // vehicleId -> { status, latest, history, dtcs, traffic }
   view: 'fleet',
   vehicleId: null,
+  drive: false, // full-screen drive mode, at #/vehicle/<id>/drive
 };
 let gauges = null;
 let tiles = new Map(); // metric key -> { el, group grid, order within the group }
@@ -82,7 +86,7 @@ let lastHeaderRender = 0;
 const $ = (id) => document.getElementById(id);
 
 function loadPrefs() {
-  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false };
+  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false, driveSlots: DEFAULT_DRIVE_SLOTS };
   try {
     Object.assign(p, JSON.parse(localStorage.getItem('obd-prefs') || '{}'));
   } catch (_) { /* storage unavailable */ }
@@ -257,17 +261,23 @@ function queueRender() {
 // -----------------------------------------------------------------------------
 // Routing
 // -----------------------------------------------------------------------------
-function route() {
-  const m = /^#\/vehicle\/([\w-]+)/.exec(location.hash);
+// Called with an event on hashchange, and with nothing after the server (re)sends everything.
+function route(e) {
+  const m = /^#\/vehicle\/([\w-]+)(\/drive)?/.exec(location.hash);
   const vehicle = m && state.vehicles.find((v) => v.id === m[1]);
   $('sidebar').classList.remove('open');
   if (vehicle) {
+    // Entering or leaving drive mode keeps the same vehicle: don't rebuild the page under it.
+    const sameVehicle = e && state.view === 'vehicle' && state.vehicleId === vehicle.id;
     state.view = 'vehicle';
     state.vehicleId = vehicle.id;
     $('view-fleet').hidden = true;
     $('view-vehicle').hidden = false;
-    openVehicle();
+    if (!sameVehicle) openVehicle();
+    setDrive(!!m[2]);
+    queueRender();
   } else {
+    setDrive(false);
     state.view = 'fleet';
     state.vehicleId = null;
     $('view-fleet').hidden = false;
@@ -428,7 +438,7 @@ function renderVehicleHeader() {
 
 function buildGauges() {
   const imperial = prefs.units === 'imperial';
-  const rpmOpts = { label: 'Engine speed', unit: 'rpm', min: 0, max: 8000, majorStep: 1000, minorStep: 250, redFrom: 6500,
+  const rpmOpts = { label: 'Engine speed', unit: 'rpm', min: 0, max: RPM_MAX, majorStep: 1000, minorStep: 250, redFrom: RPM_RED_FROM,
     tickFormat: (v) => String(v / 1000), format: (v) => Math.round(v).toLocaleString() };
   const speedOpts = imperial
     ? { label: 'Speed', unit: 'mph', min: 0, max: 160, majorStep: 20, minorStep: 5 }
@@ -524,6 +534,7 @@ function renderLive() {
   toggle.setAttribute('aria-expanded', String(expanded));
 
   renderAlerts(s, flagged, blank);
+  if (state.drive) { renderDrive(s, flagged, live, blank); return; } // page below is covered
   renderChips();
   for (const chart of charts.values()) chart.draw();
   // Header bits that change with data (sample rate, PID count) — refresh ~1/s.
@@ -534,8 +545,133 @@ function renderLive() {
   }
 }
 
+// ----- Drive mode -------------------------------------------------------------
+let wakeLock = null;
+let pickingSlot = null;
+
+function setDrive(on) {
+  if (on === state.drive) return;
+  state.drive = on;
+  $('drive').hidden = !on;
+  document.body.classList.toggle('driving', on);
+  if (on) {
+    buildDriveSlots();
+    acquireWakeLock();
+  } else {
+    if ($('slot-dialog').open) $('slot-dialog').close();
+    if (wakeLock) wakeLock.release().catch(() => {});
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+}
+
+function exitDrive() {
+  location.hash = `#/vehicle/${state.vehicleId}`;
+}
+
+// Keep the screen on while driving. Only available in secure contexts (HTTPS or localhost).
+async function acquireWakeLock() {
+  if (wakeLock || !state.drive) return;
+  if ('wakeLock' in navigator) {
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      if (!state.drive) { lock.release().catch(() => {}); return; }
+      wakeLock = lock;
+      lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; renderWakeNote(); });
+    } catch (_) { /* denied, or the page is not visible */ }
+  }
+  renderWakeNote();
+}
+function renderWakeNote() {
+  $('d-wake').textContent = wakeLock ? 'Screen will stay on'
+    : !window.isSecureContext ? 'Screen may turn off: keep-awake needs HTTPS or localhost'
+    : 'Screen may turn off: keep-awake is unavailable in this browser';
+}
+
+function driveSlotKeys() {
+  const keys = (Array.isArray(prefs.driveSlots) ? prefs.driveSlots : []).filter((k) => METRICS[k] && k !== 'rpm' && k !== 'speed');
+  for (const k of DEFAULT_DRIVE_SLOTS) if (keys.length < 4 && !keys.includes(k)) keys.push(k);
+  return keys.slice(0, 4);
+}
+function buildDriveSlots() {
+  $('d-slots').innerHTML = driveSlotKeys().map((k, i) => `
+    <button class="drive-slot" data-i="${i}" data-k="${k}">
+      <span class="l"><span>${esc(METRICS[k].label)}</span><em></em></span>
+      <span class="v">—</span>
+    </button>`).join('');
+  $('d-rpm-bar').style.setProperty('--red-zone', `${((RPM_MAX - RPM_RED_FROM) / RPM_MAX) * 100}%`);
+}
+
+function renderDrive(s, flagged, live, blank) {
+  const v = currentVehicle();
+  if (!v) return;
+  const L = s.latest;
+  const st = displayState(s);
+  $('drive').classList.toggle('stale', !live);
+  $('d-name').textContent = v.name;
+  $('d-status').dataset.state = st;
+  $('d-status').textContent = STATE_LABEL[st] || st;
+  const age = dataAge(s);
+  $('d-age').hidden = !(isStale(s) && age != null);
+  if (age != null) $('d-age').textContent = `Last reading ${formatAge(age)} ago`;
+
+  $('d-speed').textContent = blank ? '—' : fmt('speed', L.speed);
+  $('d-speed-unit').textContent = unitOf('speed');
+  const rpm = blank ? null : L.rpm;
+  $('d-rpm').textContent = fmt('rpm', rpm);
+  $('d-rpm-fill').style.width = `${rpm == null ? 0 : Math.max(0, Math.min(100, (rpm / RPM_MAX) * 100))}%`;
+
+  for (const slot of $('d-slots').children) {
+    const k = slot.dataset.k;
+    const val = blank ? null : L[k];
+    const unit = unitOf(k);
+    slot.querySelector('.v').innerHTML = `${esc(fmt(k, val))}${val != null && unit ? `<small>${esc(unit)}</small>` : ''}`;
+    const level = val != null && METRICS[k].level ? METRICS[k].level(val) : null;
+    if (level) slot.dataset.level = level; else delete slot.dataset.level;
+    slot.querySelector('em').textContent = level === 'critical' ? '▲ Critical' : level === 'warning' ? '▲ Check' : '';
+  }
+
+  // One line for anything wrong, including readings that have no slot.
+  const parts = [];
+  if (milOn(s, blank)) parts.push('Check engine light on');
+  for (const [k, level] of flagged) parts.push(`${METRICS[k].label} ${level === 'critical' ? 'critical' : 'out of range'}`);
+  const alert = $('d-alert');
+  alert.hidden = parts.length === 0;
+  alert.textContent = parts.join(' · ');
+  if (flagged.some(([, level]) => level === 'critical')) alert.dataset.level = 'critical'; else delete alert.dataset.level;
+}
+
+function openSlotPicker(index) {
+  pickingSlot = index;
+  const L = snap(state.vehicleId).latest;
+  const current = driveSlotKeys()[index];
+  const all = TILE_GROUPS.flatMap(([, keys]) => keys);
+  // Offer what this car reports; before the first connect, offer everything.
+  const reported = all.filter((k) => L[k] != null);
+  const options = reported.length ? reported : all;
+  if (!options.includes(current)) options.unshift(current);
+  $('slot-options').innerHTML = options.map((k) =>
+    `<button type="button" class="btn" data-k="${k}" aria-current="${k === current}">${esc(METRICS[k].label)}</button>`).join('');
+  $('slot-dialog').showModal();
+}
+function chooseSlot(k) {
+  const keys = driveSlotKeys();
+  const other = keys.indexOf(k);
+  if (other >= 0) keys[other] = keys[pickingSlot]; // already shown elsewhere: swap the two
+  keys[pickingSlot] = k;
+  prefs.driveSlots = keys;
+  savePrefs();
+  $('slot-dialog').close();
+  buildDriveSlots();
+  queueRender();
+}
+
 // ----- Alert strip ----------------------------------------------------------
 const WARN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 1 21h22zm0 6 1 7h-2zm0 9.5a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z"/></svg>';
+
+// Check-engine light: from the last code read, else from the live status PID. null = unknown.
+function milOn(s, blank) {
+  return s.dtcs?.milOn ?? (!blank && s.latest.milOn != null ? !!s.latest.milOn : null);
+}
 
 // Faults that need attention, shown directly under the header. Live values are left out on
 // purpose so the strip only re-renders when the set of problems changes.
@@ -543,7 +679,7 @@ function renderAlerts(s, flagged, blank) {
   const d = s.dtcs;
   const L = s.latest;
   const items = [];
-  const mil = d?.milOn ?? (!blank && L.milOn != null ? !!L.milOn : null);
+  const mil = milOn(s, blank);
   const stored = d?.stored ?? [];
   const pending = d?.pending ?? [];
   const storedCount = d ? stored.length : (!blank && L.dtcCount) || 0;
@@ -760,6 +896,33 @@ function init() {
     applyTheme();
   };
 
+  $('v-drive').onclick = () => {
+    // Must be requested from the tap itself. Not every browser allows it (iPhone Safari doesn't).
+    document.documentElement.requestFullscreen?.().catch(() => {});
+    location.hash = `#/vehicle/${state.vehicleId}/drive`;
+  };
+  $('d-exit').onclick = exitDrive;
+  $('d-slots').onclick = (e) => {
+    const slot = e.target.closest('.drive-slot');
+    if (slot) openSlotPicker(Number(slot.dataset.i));
+  };
+  $('slot-options').onclick = (e) => {
+    const b = e.target.closest('button[data-k]');
+    if (b) chooseSlot(b.dataset.k);
+  };
+  $('slot-cancel').onclick = () => $('slot-dialog').close();
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.drive && !$('slot-dialog').open) exitDrive();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') acquireWakeLock(); // the lock is dropped when hidden
+  });
+  $('v-info-toggle').onclick = () => {
+    const open = $('v-info').classList.toggle('open');
+    $('v-info-toggle').setAttribute('aria-expanded', String(open));
+    $('v-info-toggle').textContent = open ? 'Hide connection details' : 'Show connection details';
+  };
+
   $('tiles-toggle').onclick = () => {
     prefs.allTiles = !prefs.allTiles;
     savePrefs();
@@ -841,7 +1004,7 @@ function init() {
   // Keep charts scrolling smoothly even between samples.
   // The same tick ages the "last reading" label and blanks values that have gone stale.
   setInterval(() => {
-    if (state.view === 'vehicle') for (const c of charts.values()) c.draw();
+    if (state.view === 'vehicle' && !state.drive) for (const c of charts.values()) c.draw();
     renderSidebar();
     queueRender();
   }, 1000);

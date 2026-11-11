@@ -77,6 +77,7 @@
           <div class="head-actions">
             <span class="age" id="v-age" hidden></span>
             <span class="status-pill" id="v-status"></span>
+            <button class="btn" id="v-drive">Drive mode</button>
             <button class="btn" id="v-edit">Edit</button>
             <a class="btn" id="v-export" download>Export CSV</a>
             <button class="btn primary" id="v-connect">Connect</button>
@@ -87,6 +88,7 @@
 
         <div class="alerts" id="v-alerts" hidden></div>
 
+        <button class="btn details-toggle" id="v-info-toggle" aria-expanded="false" aria-controls="v-info">Show connection details</button>
         <div class="info-strip" id="v-info"></div>
 
         <div class="gauges">
@@ -183,6 +185,45 @@
         <button type="submit" class="btn primary" value="save">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- Drive mode: full-screen, glanceable view for a phone or tablet mounted in the car -->
+  <div class="drive" id="drive" hidden>
+    <header class="drive-top">
+      <div class="drive-title">
+        <strong id="d-name"></strong>
+        <span class="status-pill" id="d-status"></span>
+        <span class="age" id="d-age" hidden></span>
+      </div>
+      <button class="btn" id="d-exit">Exit</button>
+    </header>
+    <div class="drive-alert" id="d-alert" role="status" hidden></div>
+    <div class="drive-body">
+      <div class="drive-speed">
+        <span class="drive-speed-value" id="d-speed">—</span>
+        <span class="drive-speed-unit" id="d-speed-unit"></span>
+      </div>
+      <div class="drive-side">
+        <div class="drive-rpm">
+          <div class="drive-rpm-head"><span>Engine speed</span><b id="d-rpm">—</b></div>
+          <div class="drive-rpm-bar" id="d-rpm-bar"><i id="d-rpm-fill"></i></div>
+        </div>
+        <div class="drive-slots" id="d-slots"></div>
+      </div>
+    </div>
+    <footer class="drive-foot">
+      <span id="d-wake"></span>
+      <span>Tap a reading to change it</span>
+    </footer>
+  </div>
+
+  <dialog id="slot-dialog">
+    <h2>Show in this slot</h2>
+    <div class="slot-options" id="slot-options"></div>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="slot-cancel">Cancel</button>
+    </div>
   </dialog>
 
   <div class="toast" id="toast" role="status" hidden></div>

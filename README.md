@@ -13,6 +13,7 @@ You can save **any number of vehicles** and connect to several at once.
   - Gauges: RPM (with a red zone) and speed
   - Tiles: coolant, oil and intake temps; throttle; load; battery and ECU voltage; fuel level; MAF; MAP; timing; short- and long-term fuel trims; fuel rate; run time; distances. Six key readings show by default and the rest sit behind *Show all readings*, grouped into Engine, Fuel & air, Electrical and Trip. Out-of-range values get a warning or critical flag and move to the front.
   - Alert strip: the check-engine light, trouble codes and any out-of-range reading are listed directly under the vehicle header.
+  - Drive mode: a full-screen view for a phone or tablet mounted in the car, with speed in very large type, an RPM bar and four readings you choose. It keeps the screen awake where the browser allows it (HTTPS or `localhost` only).
   - Stale data: when readings stop, the header shows how old the last reading is, and values are blanked after a minute.
   - Trend charts: pick any metrics and view the last 1, 5 or 10 minutes, with a hover crosshair
 - **Diagnostics.** Shows the check-engine light, stored, pending and permanent DTCs with descriptions, and lets you clear codes after a confirmation.
