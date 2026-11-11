@@ -1,6 +1,6 @@
 import { Gauge } from './gauge.js';
 import { TimeChart } from './chart.js';
-import { describeDtc, dtcSystem } from './dtc-codes.js';
+import { describeDtc, dtcSystem, dtcGuidance, SEVERITY_LABEL } from './dtc-codes.js';
 
 // -----------------------------------------------------------------------------
 // Metric catalogue (keys match the server's PID table)
@@ -85,7 +85,7 @@ let lastHeaderRender = 0;
 const $ = (id) => document.getElementById(id);
 
 function loadPrefs() {
-  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false, driveSlots: DEFAULT_DRIVE_SLOTS };
+  const p = { units: 'imperial', theme: 'dark', range: 60, charts: DEFAULT_CHARTS, allTiles: false, driveSlots: DEFAULT_DRIVE_SLOTS, console: false };
   try {
     Object.assign(p, JSON.parse(localStorage.getItem('obd-prefs') || '{}'));
   } catch (_) { /* storage unavailable */ }
@@ -371,6 +371,8 @@ function renderFleetLive() {
 // -----------------------------------------------------------------------------
 // Vehicle view
 // -----------------------------------------------------------------------------
+const POWER_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.3 6.8a8 8 0 1 0 11.4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
 function currentVehicle() {
   return state.vehicles.find((v) => v.id === state.vehicleId);
 }
@@ -401,8 +403,12 @@ function renderVehicleHeader() {
   const age = dataAge(s);
   $('v-age').hidden = !(isStale(s) && age != null);
   if (age != null) $('v-age').textContent = `Last reading ${formatAge(age)} ago`;
-  $('v-connect').textContent = ACTIVE_STATES.includes(st) ? 'Disconnect' : 'Connect';
-  $('v-connect').classList.toggle('primary', !ACTIVE_STATES.includes(st));
+  const active = ACTIVE_STATES.includes(st);
+  if ($('v-connect').dataset.active !== String(active)) { // only on change, so a click is never interrupted
+    $('v-connect').dataset.active = String(active);
+    $('v-connect').innerHTML = `${POWER_ICON}${active ? 'Disconnect' : 'Connect'}`;
+    $('v-connect').classList.toggle('primary', !active);
+  }
   const connected = st === 'connected';
   $('dtc-read').disabled = !connected;
   $('dtc-clear').disabled = !connected;
@@ -782,18 +788,41 @@ function renderDtcs() {
       <div><strong>${mil ? 'Check engine light ON' : 'Check engine light off'}</strong>
       <span class="muted">${d.stored.length} stored · ${d.pending.length} pending · read ${esc(read)}</span></div>
     </div>`;
+  const v = currentVehicle();
+  const car = [v?.year, v?.make, v?.model].filter(Boolean).join(' ');
+  const row = (c, note) => {
+    const g = dtcGuidance(c);
+    const lookup = `https://www.google.com/search?q=${encodeURIComponent(`${c} ${car} trouble code`.replace(/\s+/g, ' '))}`;
+    return `<div class="dtc"><code>${esc(c)}</code><div>${esc(describeDtc(c))}
+      <small>${esc(dtcSystem(c))}${note ? ' · ' + note : ''}</small>
+      ${g.cause ? `<span class="dtc-cause">${esc(g.cause)}</span>` : ''}
+      <div class="dtc-meta"><span class="sev" data-sev="${g.severity}">${esc(SEVERITY_LABEL[g.severity])}</span>
+        <a href="${esc(lookup)}" target="_blank" rel="noopener noreferrer">Look up ${esc(c)}</a></div>
+    </div></div>`;
+  };
   const group = (title, codes, note) => `
     <div class="dtc-group"><h3>${title}</h3>
-      ${codes.length ? codes.map((c) => `<div class="dtc"><code>${esc(c)}</code><div>${esc(describeDtc(c))}<small>${esc(dtcSystem(c))}${note ? ' · ' + note : ''}</small></div></div>`).join('')
-        : '<div class="none">None</div>'}
+      ${codes.length ? codes.map((c) => row(c, note)).join('') : '<div class="none">None</div>'}
     </div>`;
+  const any = d.stored.length + d.pending.length + d.permanent.length > 0;
   body.innerHTML = milBox
     + group('Stored codes', d.stored)
     + group('Pending codes', d.pending, 'detected once, not yet confirmed')
-    + (d.permanent.length ? group('Permanent codes', d.permanent, 'clears itself after the monitor passes') : '');
+    + (d.permanent.length ? group('Permanent codes', d.permanent, 'clears itself after the monitor passes') : '')
+    + (any ? '<p class="dtc-note">Urgency and causes are general guidance for generic codes, not a diagnosis. They vary by make and model.</p>' : '');
 }
 
 // ----- Terminal ---------------------------------------------------------------
+function applyConsolePref() {
+  const open = !!prefs.console;
+  $('term-body').hidden = !open;
+  $('term-hint').hidden = open;
+  $('term-follow-label').hidden = !open;
+  $('term-toggle').textContent = open ? 'Hide' : 'Show';
+  $('term-toggle').setAttribute('aria-expanded', String(open));
+  $('term-card').parentNode.classList.toggle('console-closed', !open);
+  if (open) $('terminal').scrollTop = $('terminal').scrollHeight;
+}
 function trafficLine(e) {
   const ts = new Date(e.t).toLocaleTimeString([], { hour12: false });
   const arrow = e.dir === 'tx' ? '→' : e.dir === 'rx' ? '←' : '!';
@@ -814,6 +843,48 @@ function appendTraffic(e) {
 // -----------------------------------------------------------------------------
 // Actions
 // -----------------------------------------------------------------------------
+// Styled replacement for window.confirm(). `body` is trusted HTML built by the caller.
+function confirmDialog({ title, body, confirmLabel, danger = false }) {
+  return new Promise((resolve) => {
+    const dlg = $('confirm-dialog');
+    $('confirm-title').textContent = title;
+    $('confirm-body').innerHTML = body;
+    $('confirm-ok').textContent = confirmLabel;
+    $('confirm-ok').className = `btn ${danger ? 'danger-solid' : 'primary'}`;
+    const done = (answer) => {
+      dlg.onclose = null;
+      if (dlg.open) dlg.close();
+      resolve(answer);
+    };
+    $('confirm-ok').onclick = () => done(true);
+    $('confirm-cancel').onclick = () => done(false);
+    dlg.onclose = () => done(false); // Escape
+    dlg.showModal();
+    $('confirm-cancel').focus(); // the safe choice is the default
+  });
+}
+
+// Confirmation for clearing codes: names what will be cleared and what else it resets.
+function confirmClearCodes() {
+  const d = snap(state.vehicleId).dtcs;
+  const codes = d ? [...new Set([...d.stored, ...d.pending])] : [];
+  const list = codes.length
+    ? `<p>These codes will be cleared from ${esc(currentVehicle()?.name || 'the vehicle')}:</p>
+       <ul class="codes">${codes.map((c) => `<li><code>${esc(c)}</code><span>${esc(describeDtc(c))}</span></li>`).join('')}</ul>`
+    : '<p>No codes are stored as of the last read. This will still reset the monitors below.</p>';
+  return confirmDialog({
+    title: 'Clear trouble codes?',
+    body: `${list}
+      <ul>
+        <li>The check engine light turns off.</li>
+        <li>Emissions readiness monitors reset, so the car may fail an inspection until they re-run.</li>
+        <li>Codes come back if the fault is still present.${d?.permanent?.length ? ' Permanent codes are not cleared.' : ''}</li>
+      </ul>`,
+    confirmLabel: codes.length ? `Clear ${codes.length} code${codes.length === 1 ? '' : 's'}` : 'Clear codes',
+    danger: true,
+  });
+}
+
 function toast(text, isError = false) {
   const t = $('toast');
   t.textContent = text;
@@ -989,21 +1060,24 @@ function init() {
     } catch (err) { toast(err.message, true); } finally { renderVehicleHeader(); }
   };
   $('dtc-clear').onclick = async () => {
-    const ok = confirm('Clear all trouble codes and turn off the check engine light?\n\n' +
-      'This also resets emissions readiness monitors (the car may fail an inspection until they re-run). ' +
-      'Codes will return if the underlying fault is still present.');
-    if (!ok) return;
+    if (!(await confirmClearCodes())) return;
     try {
       await api('POST', `/api/vehicles/${state.vehicleId}/dtcs/clear`);
       toast('Trouble codes cleared');
     } catch (err) { toast(err.message, true); }
   };
+  $('term-toggle').onclick = () => {
+    prefs.console = !prefs.console;
+    savePrefs();
+    applyConsolePref();
+  };
+  applyConsolePref();
   $('term-form').onsubmit = async (e) => {
     e.preventDefault();
     const input = $('term-cmd');
     const command = input.value.trim();
     if (!command) return;
-    if (/^0?4$/.test(command.replace(/\s/g, '')) && !confirm('Mode 04 clears all trouble codes. Send it?')) return;
+    if (/^0?4$/.test(command.replace(/\s/g, '')) && !(await confirmClearCodes())) return;
     input.value = '';
     try { await api('POST', `/api/vehicles/${state.vehicleId}/command`, { command }); } catch (err) { toast(err.message, true); }
   };
@@ -1012,7 +1086,14 @@ function init() {
   $('vehicle-cancel').onclick = () => $('vehicle-dialog').close();
   $('vehicle-delete').onclick = async () => {
     const v = state.vehicles.find((x) => x.id === editingId);
-    if (!v || !confirm(`Delete "${v.name}"? Its saved settings will be removed.`)) return;
+    if (!v) return;
+    const ok = await confirmDialog({
+      title: `Delete ${v.name}?`,
+      body: '<p>Its saved profile and adapter settings will be removed. This cannot be undone.</p>',
+      confirmLabel: 'Delete vehicle',
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api('DELETE', `/api/vehicles/${editingId}`);
       $('vehicle-dialog').close();

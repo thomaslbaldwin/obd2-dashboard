@@ -119,6 +119,12 @@ code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-3)
 .btn.primary:hover { filter: brightness(1.08); }
 .btn.danger { color: var(--critical-text); }
 .btn.ghost { background: none; border-color: transparent; }
+.btn.danger-solid { background: var(--critical); border-color: transparent; color: #fff; }
+.btn.danger-solid:hover { background: var(--critical); filter: brightness(1.1); }
+.btn svg { width: 16px; height: 16px; flex: none; }
+/* Connect / Disconnect: set apart from the secondary actions beside it. */
+.conn-btn { margin-left: 12px; min-width: 124px; }
+.conn-btn:not(.primary) { border-color: var(--muted); }
 .icon-btn {
   display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px;
   background: none; border: 0; color: var(--text-2); cursor: pointer;
@@ -149,10 +155,10 @@ code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-3)
 .swatch { width: 14px; height: 40px; border-radius: 4px; flex: none; }
 .head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+/* Status is information, not a control: plain dot + text so it can't be mistaken for a button. */
 .status-pill {
-  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px;
-  border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--text-2);
-  border: 1px solid var(--border);
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 600; color: var(--text-2); white-space: nowrap;
 }
 .status-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .status-pill[data-state="connected"]::before { background: var(--good); }
@@ -267,6 +273,29 @@ code { font-family: var(--mono); font-size: 0.92em; background: var(--surface-3)
 .dtc code { font-weight: 700; background: none; padding: 0; font-size: 14px; }
 .dtc small { display: block; color: var(--muted); }
 .none { color: var(--muted); padding: 6px 0; }
+.dtc-cause { display: block; color: var(--text-2); font-size: 13px; margin-top: 4px; }
+.dtc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
+.dtc-meta a { color: var(--accent); font-size: 13px; }
+.sev { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-2); }
+.sev::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.sev[data-sev="ok"]::before { background: var(--good); }
+.sev[data-sev="soon"] { color: var(--warning-text); border-color: color-mix(in srgb, var(--warning) 55%, transparent); }
+.sev[data-sev="soon"]::before { background: var(--warning); }
+.sev[data-sev="stop"] { color: var(--critical-text); border-color: color-mix(in srgb, var(--critical) 70%, transparent); }
+.sev[data-sev="stop"]::before { background: var(--critical); }
+.dtc-note { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+.dtc-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.dtc-foot p { margin: 0; font-size: 12px; flex: 1 1 220px; }
+.split.console-closed { grid-template-columns: 1fr; }
+.term-hint { margin: 0; font-size: 13px; }
+.split.console-closed #term-card .card-head { margin-bottom: 4px; }
+.confirm-body { margin-top: 12px; color: var(--text-2); }
+.confirm-body p { margin: 0 0 10px; }
+.confirm-body ul { margin: 0 0 10px; padding-left: 18px; }
+.confirm-body .codes { list-style: none; padding: 0; border: 1px solid var(--border); border-radius: 8px; }
+.confirm-body .codes li { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 8px 10px; color: var(--text); }
+.confirm-body .codes li + li { border-top: 1px solid var(--border); }
+.confirm-body .codes code { background: none; padding: 0; font-weight: 700; }
 
 /* ---------- Terminal ---------- */
 .terminal {
@@ -420,7 +449,6 @@ body.driving { overflow: hidden; }
   .check input, input[type="color"] { min-height: 0; }
   input[type="color"] { height: 44px; }
   .slot-options .btn { height: 48px; }
-  .status-pill { height: 32px; }
   .fleet-card footer .btn { min-width: 110px; }
 }
 
@@ -443,6 +471,7 @@ body.driving { overflow: hidden; }
   }
   .menu-btn svg { width: 20px; height: 20px; }
   .details-toggle { display: inline-flex; }
+  .conn-btn { margin-left: 0; }
   .info-strip:not(.open) { display: none; }
   .gauges { grid-template-columns: 1fr 1fr; gap: 8px; }
   .gauge .value { font-size: 40px; }

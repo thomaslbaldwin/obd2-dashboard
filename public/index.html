@@ -80,7 +80,7 @@
             <button class="btn" id="v-drive">Drive mode</button>
             <button class="btn" id="v-edit">Edit</button>
             <a class="btn" id="v-export" download>Export CSV</a>
-            <button class="btn primary" id="v-connect">Connect</button>
+            <button class="btn primary conn-btn" id="v-connect">Connect</button>
           </div>
         </header>
 
@@ -125,24 +125,31 @@
           <div class="card" id="dtc-card">
             <div class="card-head">
               <h2>Diagnostics</h2>
-              <div>
-                <button class="btn" id="dtc-read">Read codes</button>
-                <button class="btn danger" id="dtc-clear">Clear codes</button>
-              </div>
+              <button class="btn" id="dtc-read">Read codes</button>
             </div>
             <div id="dtc-body"></div>
+            <div class="dtc-foot">
+              <p class="muted">Clearing codes turns off the check engine light and resets the emissions readiness monitors. It does not fix the fault.</p>
+              <button class="btn danger" id="dtc-clear">Clear codes…</button>
+            </div>
           </div>
 
           <div class="card" id="term-card">
             <div class="card-head">
               <h2>Adapter console</h2>
-              <label class="check"><input type="checkbox" id="term-follow" checked /> Follow</label>
+              <div>
+                <label class="check" id="term-follow-label" hidden><input type="checkbox" id="term-follow" checked /> Follow</label>
+                <button class="btn" id="term-toggle" aria-expanded="false" aria-controls="term-body">Show</button>
+              </div>
             </div>
-            <div class="terminal" id="terminal" aria-live="off"></div>
-            <form class="term-input" id="term-form">
-              <input id="term-cmd" placeholder="Send command, e.g. ATRV or 010C" autocomplete="off" spellcheck="false" />
-              <button class="btn">Send</button>
-            </form>
+            <p class="muted term-hint" id="term-hint">Raw traffic between the server and the adapter, for troubleshooting.</p>
+            <div id="term-body" hidden>
+              <div class="terminal" id="terminal" aria-live="off"></div>
+              <form class="term-input" id="term-form">
+                <input id="term-cmd" placeholder="Send command, e.g. ATRV or 010C" autocomplete="off" spellcheck="false" />
+                <button class="btn">Send</button>
+              </form>
+            </div>
           </div>
         </div>
       </section>
@@ -224,6 +231,16 @@
     <div class="dialog-actions">
       <span class="spacer"></span>
       <button type="button" class="btn" id="slot-cancel">Cancel</button>
+    </div>
+  </dialog>
+
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <h2 id="confirm-title"></h2>
+    <div class="confirm-body" id="confirm-body"></div>
+    <div class="dialog-actions">
+      <span class="spacer"></span>
+      <button type="button" class="btn" id="confirm-cancel">Cancel</button>
+      <button type="button" class="btn" id="confirm-ok"></button>
     </div>
   </dialog>
 

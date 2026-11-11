@@ -16,8 +16,8 @@ You can save **any number of vehicles** and connect to several at once.
   - Drive mode: a full-screen view for a phone or tablet mounted in the car, with speed in very large type, an RPM bar and four readings you choose. It keeps the screen awake where the browser allows it (HTTPS or `localhost` only).
   - Stale data: when readings stop, the header shows how old the last reading is, and values are blanked after a minute.
   - Trend charts: pick any metrics and view the last 1, 5 or 10 minutes, with a hover crosshair
-- **Diagnostics.** Shows the check-engine light, stored, pending and permanent DTCs with descriptions, and lets you clear codes after a confirmation.
-- **Adapter console.** Shows the live TX/RX traffic and lets you send raw commands (`ATRV`, `010C`, …), which helps with troubleshooting.
+- **Diagnostics.** Shows the check-engine light and the stored, pending and permanent DTCs. Each code has a description, a general urgency rating (stop driving / service soon / usually safe to drive), a likely cause and a lookup link. Clearing codes asks for confirmation and lists exactly which codes will be cleared.
+- **Adapter console.** Collapsed by default. Shows the live TX/RX traffic and lets you send raw commands (`ATRV`, `010C`, …), which helps with troubleshooting.
 - **Other options:** CSV export of recent data, imperial (default) or metric units, dark/light theme, and a responsive layout for a tablet or phone mounted in the car, with controls at least 44px tall on touch screens.
 - **Built-in simulator.** Emulates WiFi adapters on running cars, so you can try everything without a vehicle.
 
